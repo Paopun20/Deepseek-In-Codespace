@@ -1,2 +1,2 @@
 # sh code
-sudo glances
+sudo glances --webserver
