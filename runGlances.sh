@@ -1,2 +1,2 @@
 # sh code
-sudo glances --webserver
+sudo glances --webserver --port 1337
