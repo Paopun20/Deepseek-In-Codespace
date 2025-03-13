@@ -1,72 +1,112 @@
-name: AI Chat Service API - Continuous Deployment
+name: AI Chat Service - CI/CD
 
 on:
   push:
-    branches:
-      - main # Or your main development branch
+    branches: [main]
   pull_request:
-    branches:
-      - main # Or your main development branch
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-deploy:
+  build-test:
     runs-on: ubuntu-latest
-    environment: production # or dev
+    services:
+      ollama:
+        image: ollama/ollama
+        ports:
+          - 11434:11434
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run unit tests
+      run: |
+        # Add your test command here
+        echo "Running tests..."
+        # Example: pytest tests/
+
+    - name: Verify Ollama connection
+      run: |
+        echo "Checking Ollama service..."
+        curl -sSf http://localhost:11434/api/tags || (echo "Ollama service unavailable"; exit 1)
+
+  docker-build-push:
+    needs: build-test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    environment: production
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: true
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+  deploy:
+    needs: docker-build-push
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    environment: production
+
+    steps:
+    - name: Deploy to production
+      uses: appleboy/ssh-action@v1
+      with:
+        host: ${{ secrets.PRODUCTION_HOST }}
+        username: ${{ secrets.SSH_USERNAME }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker stop ai-chat-service || true
+          docker rm ai-chat-service || true
+          docker run -d \
+            --name ai-chat-service \
+            -p 6969:6969 \
+            -v uploads:/app/uploads \
+            -e OLLAMA_HOST=http://ollama:11434 \
+            --network my-network \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+  notify:
+    if: always()
+    runs-on: ubuntu-latest
+    needs: [build-test, docker-build-push, deploy]
+    steps:
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v1
+        if: failure()
         with:
-          python-version: '3.10' # Or your preferred Python version
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Check Ollama connection
-        run: |
-          # You might want to start Ollama in a background process here,
-          # or use a service that already has it running,
-          # depending on your deployment environment.
-          # This is a placeholder. You need to customize this.
-          echo "Checking if Ollama is available..."
-          # Example: using curl to check if Ollama is listening on its port
-          curl http://localhost:11434/api/tags || (echo "Ollama not available, exiting."; exit 1)
-          echo "Ollama is available"
-      - name: Build and Push Docker Image (if using Docker)
-        if: ${{ github.event_name == 'push' }}
-        run: |
-          echo "Building Docker Image..."
-          docker build -t ghcr.io/${{ github.repository_owner }}/ai-chat-service:latest .
-          echo "Logging into Docker Hub..."
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin
-          echo "Pushing Docker Image to GitHub Container Registry..."
-          docker push ghcr.io/${{ github.repository_owner }}/ai-chat-service:latest
-
-      - name: Deploy to Server (Placeholder)
-        if: ${{ github.event_name == 'push' }}
-        run: |
-          echo "Deploying to production server..."
-          # Replace the following with your deployment steps
-          # For example:
-          # - SSH into your server
-          # - pull the latest code (if not using docker)
-          # - run the docker image (if using docker)
-          # - restart any services if needed
-          # Example with ssh and docker:
-          # ssh -i ~/.ssh/your-server-key user@your-server "
-          #   cd /path/to/your/project &&
-          #   git pull &&
-          #   docker-compose down &&
-          #   docker-compose up -d
-          # "
-          echo "Deployment completed"
-      - name: Notify on Failure
-        if: ${{ failure() }}
-        run: |
-          echo "The deployment has failed."
-          # Optionally, add commands to send failure notifications via email, Slack, etc.
+          payload: |
+            {
+              "text": "🚨 Deployment failed! (${{ github.workflow }})\nRepo: ${{ github.repository }}\nCommit: ${{ github.sha }}\nBy: ${{ github.actor }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
