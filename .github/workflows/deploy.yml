@@ -69,7 +69,6 @@ jobs:
         tags: |
           ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-
   deploy:
     needs: docker-build-push
     runs-on: ubuntu-latest
