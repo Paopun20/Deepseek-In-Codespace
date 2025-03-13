@@ -100,13 +100,16 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build-test, docker-build-push, deploy]
     steps:
-      - name: Send Slack notification
-        uses: slackapi/slack-github-action@v1
-        if: failure()
+      - name: Send Discord notification
+        uses: appleboy/discord-action@v1.5.0
         with:
-          payload: |
-            {
-              "text": "🚨 Deployment failed! (${{ github.workflow }})\nRepo: ${{ github.repository }}\nCommit: ${{ github.sha }}\nBy: ${{ github.actor }}"
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID }}
+          webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN }}
+          color: ${{ job.status == 'success' && '3066993' || '15158332' }}
+          message: |
+            Job: ${{ github.workflow }}
+            Status: ${{ job.status }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            Actor: ${{ github.actor }}
+            Repository: ${{ github.repository }}
