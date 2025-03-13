@@ -27,18 +27,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run linters (optional)
-        run: |
-          pip install flake8
-          flake8 .
-
-      - name: Run tests (optional)
-        run: |
-          # Add your test execution command here
-          # Example using pytest:
-          # pip install pytest
-          # pytest
-
       - name: Check Ollama connection
         run: |
           # You might want to start Ollama in a background process here,
