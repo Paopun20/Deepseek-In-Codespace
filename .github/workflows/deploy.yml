@@ -1,0 +1,84 @@
+name: AI Chat Service API - Continuous Deployment
+
+on:
+  push:
+    branches:
+      - main # Or your main development branch
+  pull_request:
+    branches:
+      - main # Or your main development branch
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: production # or dev
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10' # Or your preferred Python version
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run linters (optional)
+        run: |
+          pip install flake8
+          flake8 .
+
+      - name: Run tests (optional)
+        run: |
+          # Add your test execution command here
+          # Example using pytest:
+          # pip install pytest
+          # pytest
+
+      - name: Check Ollama connection
+        run: |
+          # You might want to start Ollama in a background process here,
+          # or use a service that already has it running,
+          # depending on your deployment environment.
+          # This is a placeholder. You need to customize this.
+          echo "Checking if Ollama is available..."
+          # Example: using curl to check if Ollama is listening on its port
+          curl http://localhost:11434/api/tags || (echo "Ollama not available, exiting."; exit 1)
+          echo "Ollama is available"
+      - name: Build and Push Docker Image (if using Docker)
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          echo "Building Docker Image..."
+          docker build -t ghcr.io/${{ github.repository_owner }}/ai-chat-service:latest .
+          echo "Logging into Docker Hub..."
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin
+          echo "Pushing Docker Image to GitHub Container Registry..."
+          docker push ghcr.io/${{ github.repository_owner }}/ai-chat-service:latest
+
+      - name: Deploy to Server (Placeholder)
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          echo "Deploying to production server..."
+          # Replace the following with your deployment steps
+          # For example:
+          # - SSH into your server
+          # - pull the latest code (if not using docker)
+          # - run the docker image (if using docker)
+          # - restart any services if needed
+          # Example with ssh and docker:
+          # ssh -i ~/.ssh/your-server-key user@your-server "
+          #   cd /path/to/your/project &&
+          #   git pull &&
+          #   docker-compose down &&
+          #   docker-compose up -d
+          # "
+          echo "Deployment completed"
+      - name: Notify on Failure
+        if: ${{ failure() }}
+        run: |
+          echo "The deployment has failed."
+          # Optionally, add commands to send failure notifications via email, Slack, etc.
